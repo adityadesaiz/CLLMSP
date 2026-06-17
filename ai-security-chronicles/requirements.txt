@@ -1,0 +1,7 @@
+moviepy>=1.0.3,<2.0.0
+Pillow>=9.0.0
+numpy>=1.21.0
+requests>=2.25.1
+google-genai>=0.5.0
+python-dotenv>=1.0.0
+edge-tts>=7.0.0

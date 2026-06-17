@@ -1,0 +1,8 @@
+.env
+__pycache__/
+*.pyc
+ep01/fonts/
+ep01/panels/
+ep01/audio/
+ep01/output/
+EP01_ShortTEMP_MPY_wvf_snd.mp4
