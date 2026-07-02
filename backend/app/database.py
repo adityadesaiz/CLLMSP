@@ -40,7 +40,9 @@ def simple_minhash(text: str, num_hashes: int = 100) -> List[int]:
     for i in range(num_hashes):
         min_h = float('inf')
         for w in words:
-            h = hash(f"{i}_{w}")
+            # Replaced built-in hash() with md5 for deterministic consistency across process restarts
+            w_str = f"{i}_{w}"
+            h = int(hashlib.md5(w_str.encode('utf-8')).hexdigest(), 16)
             if h < min_h:
                 min_h = h
         hashes.append(min_h)
@@ -62,6 +64,7 @@ async def init_db():
                     company TEXT NOT NULL,
                     title TEXT NOT NULL,
                     url TEXT NOT NULL,
+                    raw_jd_text TEXT NOT NULL,
                     compatibility_score REAL,
                     disqualified_reasons TEXT,
                     processing_status TEXT NOT NULL,
@@ -72,6 +75,12 @@ async def init_db():
                     minhash_signature TEXT
                 )
             """)
+            # Also checking if we need to add the column to an existing table if this isn't fresh
+            try:
+                 await db.execute("ALTER TABLE jobs_discovered ADD COLUMN raw_jd_text TEXT")
+            except aiosqlite.OperationalError:
+                 pass # Column exists
+
             await db.execute("CREATE INDEX IF NOT EXISTS idx_status ON jobs_discovered(processing_status)")
             await db.commit()
     except Exception as e:
@@ -80,8 +89,6 @@ async def init_db():
 
 async def check_tailored_file_exists(job_hash: str, rubric_version: str) -> bool:
     """Verify if a tailored file already exists to guarantee retry idempotency."""
-    # Assuming tailored files are stored in a specific directory
-    # For example: ./tailored_applications/{job_hash}_{rubric_version}.txt
     filepath = f"./tailored_applications/{job_hash}_{rubric_version}.txt"
     return os.path.exists(filepath)
 
@@ -108,10 +115,10 @@ async def insert_job(job_hash: str, company: str, title: str, url: str, raw_jd_t
 
             await db.execute("""
                 INSERT INTO jobs_discovered
-                (job_hash, company, title, url, processing_status, rubric_version, minhash_signature)
-                VALUES (?, ?, ?, ?, 'pending', ?, ?)
+                (job_hash, company, title, url, raw_jd_text, processing_status, rubric_version, minhash_signature)
+                VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)
                 ON CONFLICT(job_hash) DO NOTHING
-            """, (job_hash, company, title, url, rubric_version, mh_str))
+            """, (job_hash, company, title, url, raw_jd_text, rubric_version, mh_str))
             await db.commit()
             log_with_context(logging.INFO, "Job inserted successfully", job_hash, "insertion", "pending")
             return True
@@ -130,13 +137,14 @@ async def update_job_status(job_hash: str, new_status: str, reasons: List[str] =
                     return False
                 current_time = row[0]
 
-            await db.execute("""
+            cursor = await db.execute("""
                 UPDATE jobs_discovered
                 SET processing_status = ?, disqualified_reasons = ?, compatibility_score = ?, updated_at = CURRENT_TIMESTAMP
                 WHERE job_hash = ? AND updated_at = ?
             """, (new_status, reasons_json, score, job_hash, current_time))
 
-            if db.total_changes > 0:
+            # Use cursor.rowcount instead of db.total_changes
+            if cursor.rowcount > 0:
                 await db.commit()
                 log_with_context(logging.INFO, "Job status updated", job_hash, "update", new_status)
                 return True

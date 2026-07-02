@@ -34,7 +34,7 @@ async def process_job_with_gemini(job_hash: str, raw_jd_text: str) -> Dict[str, 
     log_with_context(logging.INFO, "Starting Gemini schema extraction", job_hash, "schema_extraction", "started")
     try:
         response = await acompletion(
-            model="gemini/gemini-1.5-flash",
+            model="gemini/gemini-2.0-flash", # Updated from 1.5-flash
             messages=[{"role": "user", "content": f"Extract structured schema from this JD. Include a 'score' out of 100 based on software engineering requirements, and 'reasons' array for disqualification if score < 60:\n{raw_jd_text}"}],
             response_format={"type": "json_object"},
             api_key=config.GEMINI_API_KEY
@@ -76,7 +76,7 @@ async def strategy_node_claude(job_hash: str, extracted_schema: Dict[str, Any]) 
                 {"role": "system", "content": f"You are a career strategist. Base your application entirely on this master profile:\n{profile.text}"},
                 {"role": "user", "content": f"Generate a tailored application summary string targeting the enterprise pain points in this JD schema. Output paragraphs broken by newlines.\n{json.dumps(extracted_schema)}"}
             ],
-            api_key=config.OPENAI_API_KEY
+            api_key=config.ANTHROPIC_API_KEY # Updated from OPENAI_API_KEY
         )
 
         cost = response.get("_hidden_params", {}).get("response_cost", 0.01)
